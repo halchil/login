@@ -107,7 +107,6 @@ app.get("/logout", (req, res) => {
   
     res.redirect(logoutUrl);
   });
-  
 
 // ===== 起動 =====
 app.listen(3000, () => {

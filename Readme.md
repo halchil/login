@@ -255,3 +255,182 @@ metabaseを例に、全体の流れを示す。
 Keycloak	「Metabaseを信用していいか」
 Metabase	「認証はKeycloakに任せる」
 ```
+
+
+
+OIDC の流れを整理
+
+
+```
+/login
+  ↓
+Keycloak
+  ↓
+/callback?code=XXXX   ← ★ code はここだけ
+  ↓（token交換）
+/mypage               ← ★ code はもう無い
+
+```
+
+# まとめ
+全体像
+
+```
+[Browser]
+   |
+   | ① /login（自作）
+   v
+[Keycloak]  ← 認証の本体
+   |
+   | ② 認証成功（code発行）
+   v
+[Browser]
+   |
+   | ③ /callback（code受信）
+   v
+[Next.js API]  ← サーバ側
+   |
+   | ④ code → token交換
+   v
+[Browser]
+   |
+   | ⑤ /mypage（ログイン後）
+
+```
+
+## ① /login（認証の入口）
+
+役割
+
+「ログインを開始する」だけ
+
+認証は まだしていない
+
+やっていること
+```
+window.location.href = 
+  http://KEYCLOAK/auth
+    ?client_id=demo-app
+    &response_type=code
+    &redirect_uri=/callback
+
+```
+
+URLの意味
+```
+client_id Keycloakに登録したアプリ名
+response_type=code 「あとで token に交換する券（code）」をください
+redirect_uri 認証後に戻ってくる先
+```
+ここでは Keycloak に丸投げしているだけ
+
+## ② Keycloak（認証の本体）
+
+役割
+
+ユーザーID / パスワード確認
+
+SSOセッション作成
+
+成功するとKeycloak が ブラウザをリダイレクトする：
+
+```
+/callback?code=XXXXX&session_state=YYYY
+```
+
+## ③ /callback（認証結果の受け取り口）
+
+役割
+
+Keycloak が返した code を受け取る
+でも token交換はまだしない（ブラウザではNG）
+
+```
+const { code } = router.query;
+```
+
+重要な理解
+code は callback にしか来ない
+/mypage や /login では 絶対に見てはいけない
+
+
+## ④ /api/token（サーバ側での token 交換）
+
+なぜ必要？
+token endpoint は CORS非対応
+client_secret を扱うので ブラウザNG
+👉 Next.js API Route が代理人になる
+
+/api/token がやっていること
+```
+POST /token
+  grant_type=authorization_code
+  client_id=demo-app
+  client_secret=****
+  code=XXXXX
+  redirect_uri=/callback
+```
+
+成功すると返るもの
+
+```
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "id_token": "...",
+  "expires_in": 300
+}
+
+```
+
+## ⑤ /callback → /mypage
+
+callback の最後
+```
+localStorage.setItem("access_token", token.access_token);
+router.replace("/mypage");
+```
+
+ここでやっていること
+「ログイン済みの印」を保存
+画面を切り替えるだけ
+
+
+## ⑥ /mypage（ログイン後ページ）
+やるべき判定
+❌ ダメな例
+
+```
+router.query.code を見る
+```
+
+✅ 正解
+
+```
+localStorage.getItem("access_token")
+
+```
+
+なぜ？
+
+/mypage に code は来ない
+
+token が「ログイン済み」の証拠だから
+
+## ログアウトの流れ
+
+最低限
+
+```
+localStorage.removeItem("access_token")
+→ /login
+```
+
+完全ログアウト（SSO含む）
+
+```
+Keycloak /logout
+  ?redirect_uri=/login
+
+```
+
