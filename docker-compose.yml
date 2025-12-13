@@ -16,15 +16,16 @@ services:
     working_dir: /app
     volumes:
       - ./app:/app
-    command: sh -c "npm install && npm start"
+    #command: sh -c "npm install && npm start"
+    command: sh -c "npm install && npm run dev"
     ports:
     - "3000:3000"
     environment:
       - KEYCLOAK_URL=http://keycloak:8080
       - KEYCLOAK_REALM=myrealm
-      - KEYCLOAK_CLIENT_ID=myclient
-      - KEYCLOAK_CLIENT_SECRET=mysecret
-      - APP_URL=http://localhost:8080
+      - KEYCLOAK_CLIENT_ID=demo-app
+      - KEYCLOAK_CLIENT_SECRET=55qSPb8vM6OTj2tUqbnV691E6Sqseu3h
+      # - APP_URL=http://localhost:8080
 
   keycloak:
     image: quay.io/keycloak/keycloak:25.0
