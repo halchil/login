@@ -2,11 +2,11 @@
 export default function Login() {
     const login = () => {
       const url =
-        "http://192.168.56.137:8081/realms/myrealm/protocol/openid-connect/auth" +
+        "http://localhost:8081/realms/myrealm/protocol/openid-connect/auth" +
         "?client_id=demo-app" +
         "&response_type=code" +
         "&scope=openid" +
-        "&redirect_uri=http://192.168.56.137:3000/callback";
+        "&redirect_uri=http://localhost:3000/callback";
   
       console.log("REDIRECT URL:", url);
       window.location.href = url;

@@ -12,7 +12,7 @@ export default async function handler(req, res) {
     params.append("code", code);
     params.append(
       "redirect_uri",
-      "http://192.168.56.137:3000/callback"
+      "http://localhost:3000/callback"
     );
   
     const kcRes = await fetch(
