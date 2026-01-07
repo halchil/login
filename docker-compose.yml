@@ -24,7 +24,7 @@ services:
       - KEYCLOAK_URL=http://keycloak:8080
       - KEYCLOAK_REALM=myrealm
       - KEYCLOAK_CLIENT_ID=demo-app
-      - KEYCLOAK_CLIENT_SECRET=55qSPb8vM6OTj2tUqbnV691E6Sqseu3h
+      - KEYCLOAK_CLIENT_SECRET=8eNhF906hN0JDcIxfhDm0R1vqiIGTYFZ
       # - APP_URL=http://localhost:8080
 
   keycloak:

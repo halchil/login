@@ -1,17 +1,34 @@
-ログイン機能の最適構成のみ実装
+# 基本コマンド
 
-ディレクトリ構成
 ```
-login
-├─ docker-compose.yml
-├─ nginx/
-│  └─ default.conf
-└─ app/
-   ├─ package.json
-   └─ index.js
+docker compose down
+docker compose up -d
 ```
 
-順に起動する
+# Keycloak Nginxパターンの認証フロー
+```
+1. ユーザー → http://localhost:8080/login (nginx:80)
+   ↓
+2. nginx → app:3000/login にプロキシ
+   ↓
+3. login.js → Keycloak認証URL (http://192.168.56.137:8081/...) へリダイレクト
+   ↓
+4. ユーザー → Keycloak認証画面 (直接アクセス)
+   ↓
+5. 認証成功 → http://192.168.56.137:3000/callback?code=xxx (直接app:3000)
+   ↓
+6. callback.js → /api/token にPOST (app:3000内)
+   ↓
+7. token.js → keycloak:8080 でトークン交換 (内部通信)
+   ↓
+8. access_tokenをlocalStorageに保存
+   ↓
+9. /mypage へリダイレクト (app:3000内)
+   ↓
+10. mypage.js → localStorage確認 → 表示
+```
+
+# KeycloakのRealm作成方法
 
 ```
 docker compose up keycloak -d
@@ -21,12 +38,61 @@ http://192.168.56.137:8081
 `admin`,`admin`でログイン
 
 KeycloakのRealmとClientを作成する。
-`redirect URI`を設定する。
+アプリ側で、どのRealm,どのClinetを指定するかは、一旦`docker-compose.yml`に記載しているが、これは`.env`ファイルにした方がいい。
+
+## Realmの作成
+Realmの作成は簡単。
+`Create Realm`から名前を`myrealm`を指定してOKを押すだけで作成可能。
+
+## Clientの作成
+今回は`demo-app`という名前で作成する。
+`create clinet`を押して作成を始める。
+
+`Client ID`の部分に`demo-app`を設定。
+
+### Client作成時のLogin Setting方法
+
+①RootURLとHome URLの設定
+```
+http://192.168.56.137:3000/login
+```
+
+`redirect URI(Valid redirect URIs )`を設定する。
+
+設定内容
+```
+http://192.168.56.137:3000/mypage
+http://192.168.56.137:8080/*
+```
 `redirect URI`とは、ログインが終わったあと、Keycloakがブラウザを戻す先のURLである。
 つまり、アプリケーション側の画面のURLとなる。
 
 
-認証フローは以下のようになる。
+次に、Clinet画面の`Roles`画面から'demo-app-role'を作成
+
+Clientのトークンを取得
+docker composeに登録しているClientのトークンを作成する必要がある。
+
+demo-app(clinet)→Settings→Capability config
+ここの
+`Client Authentication`をONにする
+そうすると、Settingタブのところに、`Credentials`が出現
+そこにシークレットが書いてある
+
+トークン作成後の反映コマンド
+```
+docker compose up -d --force-recreate app
+```
+
+## Userの作成
+testユーザの作成。
+ユーザ画面から普通に作成する。
+
+Clinetとは、Client Roleを介して紐づけを行う。
+先ほど作成して、`demo-app-role`を登録する。
+
+
+Keycloak側の認証フローは以下のようになる。
 ```
 ① ユーザが /login を押す
 ② ブラウザが Keycloak に飛ぶ
@@ -146,84 +212,7 @@ Keycloakのセッションは 2層構造 である
 ```
 
 
-# 本番におけるDBのセッション管理
-現在はvolumeで行っている
 
-
-ログのリアルタイム監視
-```
-docker logs -f login-nginx-1
-docker logs --tail 50 -f login-nginx-1
-
-```
-
-
-# ページ作成
-マイページの作成とログアウト機能を実装
-
-画面の推移
-
-```
-未ログイン
-  └─ /mypage に来た
-        ↓
-      /login に強制遷移
-        ↓
-   Keycloakログイン
-        ↓
-      /callback
-        ↓
-      /mypage
-
-ログイン済
-  └─ /mypage 表示
-        └─ Logout ボタン
-              ↓
-          Keycloakログアウト
-              ↓
-            /login
-```
-
-必要なエンドポイント一覧
-
-
-```
-/login ログイン入口（Keycloakへ飛ばす）
-/callback Keycloakから戻る
-/mypage ログイン後ページ
-/logout ログアウト
-```
-
-アクセス
-```
-http://192.168.56.137:3000/mypage
-```
-
-正しい流れ
-```
-/mypage
- ↓ Logout
-/logout
- ↓
-Keycloak（id_token でセッション特定）
- ↓
-Keycloakセッション破棄
- ↓
-/login
-
-```
-
-ログアウト仕様について
-
-ログイン
-```
-redirect_uri        ← OK
-```
-ログアウト
-```
-id_token_hint       ← 必須
-post_logout_redirect_uri ← 必須
-```
 
 # サービスを増やしてもSSOを通すイメージ
 
@@ -329,9 +318,7 @@ redirect_uri 認証後に戻ってくる先
 役割
 
 ユーザーID / パスワード確認
-
 SSOセッション作成
-
 成功するとKeycloak が ブラウザをリダイレクトする：
 
 ```
@@ -339,7 +326,6 @@ SSOセッション作成
 ```
 
 ## ③ /callback（認証結果の受け取り口）
-
 役割
 
 Keycloak が返した code を受け取る
@@ -353,84 +339,14 @@ const { code } = router.query;
 code は callback にしか来ない
 /mypage や /login では 絶対に見てはいけない
 
-
 ## ④ /api/token（サーバ側での token 交換）
 
-なぜ必要？
-token endpoint は CORS非対応
-client_secret を扱うので ブラウザNG
-👉 Next.js API Route が代理人になる
 
-/api/token がやっていること
+# Googleアカウントとの連携
+
+Google Cloud Consoleの`OAuth同意画面`ページに移動
 ```
-POST /token
-  grant_type=authorization_code
-  client_id=demo-app
-  client_secret=****
-  code=XXXXX
-  redirect_uri=/callback
+https://console.cloud.google.com/auth
 ```
 
-成功すると返るもの
-
-```
-{
-  "access_token": "...",
-  "refresh_token": "...",
-  "id_token": "...",
-  "expires_in": 300
-}
-
-```
-
-## ⑤ /callback → /mypage
-
-callback の最後
-```
-localStorage.setItem("access_token", token.access_token);
-router.replace("/mypage");
-```
-
-ここでやっていること
-「ログイン済みの印」を保存
-画面を切り替えるだけ
-
-
-## ⑥ /mypage（ログイン後ページ）
-やるべき判定
-❌ ダメな例
-
-```
-router.query.code を見る
-```
-
-✅ 正解
-
-```
-localStorage.getItem("access_token")
-
-```
-
-なぜ？
-
-/mypage に code は来ない
-
-token が「ログイン済み」の証拠だから
-
-## ログアウトの流れ
-
-最低限
-
-```
-localStorage.removeItem("access_token")
-→ /login
-```
-
-完全ログアウト（SSO含む）
-
-```
-Keycloak /logout
-  ?redirect_uri=/login
-
-```
-
+「APIとサービス」→「OAuth 同意画面」
